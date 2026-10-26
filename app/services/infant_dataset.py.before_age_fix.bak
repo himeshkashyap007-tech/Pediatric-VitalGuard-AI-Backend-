@@ -1,0 +1,169 @@
+"""Validated, reproducible loader for the synthetic infant reference dataset."""
+
+from functools import lru_cache
+from pathlib import Path
+import math
+import random
+
+import pandas as pd
+
+
+DATASET_FILENAME = "normal_neonate_infant_vitals_0-6mo.xlsx"
+
+REQUIRED_COLUMNS = {
+    "Patient ID",
+    "Sex",
+    "Age (days)",
+    "Age group",
+    "Heart rate (beats/min)",
+    "SpO2 (%)",
+    "Respiratory rate (breaths/min)",
+    "Systolic BP (mmHg)",
+    "Diastolic BP (mmHg)",
+    "Mean BP (mmHg)",
+}
+
+VITAL_COLUMN_MAP = {
+    "pulse_bpm": "Heart rate (beats/min)",
+    "spo2_percent": "SpO2 (%)",
+    "respiratory_rate_bpm": "Respiratory rate (breaths/min)",
+    "systolic_bp_mmhg": "Systolic BP (mmHg)",
+    "diastolic_bp_mmhg": "Diastolic BP (mmHg)",
+    "mean_bp_mmhg": "Mean BP (mmHg)",
+}
+
+
+def default_dataset_path() -> Path:
+    """Resolve the workbook relative to the backend project root."""
+    project_root = Path(__file__).resolve().parents[2]
+    return (
+        project_root
+        / "data"
+        / "reference"
+        / DATASET_FILENAME
+    )
+
+
+@lru_cache(maxsize=4)
+def _load_cached_dataset(path_string: str, modified_time: int) -> pd.DataFrame:
+    """Load and validate a workbook once per path/version."""
+    del modified_time  # Included in the cache key to invalidate changed files.
+
+    path = Path(path_string)
+    if not path.is_file():
+        raise FileNotFoundError(f"Infant reference dataset not found: {path}")
+
+    try:
+        frame = pd.read_excel(path, sheet_name="Data", engine="openpyxl")
+    except Exception as exc:
+        raise ValueError(f"Unable to read infant reference dataset: {exc}") from exc
+
+    missing = REQUIRED_COLUMNS - set(frame.columns)
+    if missing:
+        raise ValueError(
+            "Infant reference dataset is missing columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    if frame.empty:
+        raise ValueError("Infant reference dataset contains no records")
+
+    numeric_columns = [
+        "Age (days)",
+        *VITAL_COLUMN_MAP.values(),
+    ]
+
+    for column in numeric_columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+
+    if frame[numeric_columns].isna().any().any():
+        bad_columns = frame[numeric_columns].columns[
+            frame[numeric_columns].isna().any()
+        ].tolist()
+        raise ValueError(
+            "Missing or non-numeric values in dataset columns: "
+            + ", ".join(bad_columns)
+        )
+
+    values = frame[numeric_columns].to_numpy(dtype=float)
+    if not all(math.isfinite(float(value)) for value in values.flat):
+        raise ValueError("Dataset contains non-finite numeric values")
+
+    if not frame["Age (days)"].between(0, 180).all():
+        raise ValueError("Dataset ages must be between 0 and 180 days")
+
+    return frame.reset_index(drop=True)
+
+
+def load_infant_dataset(path: str | Path | None = None) -> pd.DataFrame:
+    """Return a copy of the validated synthetic reference dataset."""
+    dataset_path = Path(path) if path is not None else default_dataset_path()
+    dataset_path = dataset_path.resolve()
+
+    if not dataset_path.is_file():
+        raise FileNotFoundError(
+            f"Infant reference dataset not found: {dataset_path}"
+        )
+
+    cached = _load_cached_dataset(
+        str(dataset_path),
+        dataset_path.stat().st_mtime_ns,
+    )
+    return cached.copy(deep=True)
+
+
+def select_infant_profile(
+    age_days: int,
+    seed: int | None = None,
+    path: str | Path | None = None,
+) -> dict:
+    """
+    Select a reproducible age-appropriate synthetic reference profile.
+
+    Prefer records within 14 days of the requested age. If no records
+    are available in that window, use the five nearest records.
+    This is a sampling rule, not a clinical reference-range algorithm.
+    """
+    if isinstance(age_days, bool) or not isinstance(age_days, int):
+        raise ValueError("age_days must be an integer")
+
+    if not 0 <= age_days <= 180:
+        raise ValueError("age_days must be between 0 and 180")
+
+    if seed is not None and (
+        isinstance(seed, bool)
+        or not isinstance(seed, int)
+        or seed < 0
+    ):
+        raise ValueError("seed must be a non-negative integer or None")
+
+    frame = load_infant_dataset(path)
+    distances = (frame["Age (days)"] - age_days).abs()
+    candidates = frame.loc[distances <= 14].copy()
+
+    selection_method = "within_14_days"
+    if candidates.empty:
+        nearest_indices = distances.nsmallest(min(5, len(frame))).index
+        candidates = frame.loc[nearest_indices].copy()
+        selection_method = "five_nearest_records"
+
+    rng = random.Random(seed)
+    selected_index = rng.choice(list(candidates.index))
+    row = frame.loc[selected_index]
+
+    profile = {
+        "age_days_requested": age_days,
+        "profile_age_days": int(row["Age (days)"]),
+        "profile_id": str(row["Patient ID"]),
+        "sex": str(row["Sex"]),
+        "age_group": str(row["Age group"]),
+        "selection_method": selection_method,
+        "dataset_filename": DATASET_FILENAME,
+        "synthetic_data": True,
+        "profile_seed": seed,
+    }
+
+    for output_name, source_column in VITAL_COLUMN_MAP.items():
+        profile[output_name] = float(row[source_column])
+
+    return profile

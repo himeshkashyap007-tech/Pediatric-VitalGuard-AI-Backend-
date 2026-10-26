@@ -1,0 +1,8 @@
+{
+  "scenario": "clean",
+  "sample_rate_hz": 100,
+  "duration_seconds": 60,
+  "synthetic_heart_rate_bpm": 120,
+  "sample_count": 6001,
+  "data_type": "synthetic_nonclinical_test_data"
+}
