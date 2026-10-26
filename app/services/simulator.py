@@ -2,7 +2,7 @@
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.constants import SCENARIOS
 from app.core.config import settings
@@ -228,7 +228,7 @@ class SignalSimulator:
             "actual_samples": n_samples,
             "seed": self.seed,
             "generation_method": "python_simulator",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "synthetic_data": True
         }
         

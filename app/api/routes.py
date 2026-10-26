@@ -1,7 +1,7 @@
-"""API route handlers."""
+﻿"""API route handlers."""
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 import logging
 
@@ -38,7 +38,7 @@ async def health_check():
     """Health check endpoint."""
     return HealthResponse(
         status="healthy",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         matlab_available=settings.MATLAB_AVAILABLE,
         version="1.0.0"
     )
@@ -149,7 +149,7 @@ async def analyze_signal(request: AnalysisRequest):
         
         return AnalysisResponse(
             success=True,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             data_source=request.source,
             sample_count=len(data),
             quality_score=quality_score,
@@ -194,15 +194,15 @@ async def generate_report(request: ReportRequest):
         
         if request.format == "json":
             content = report_generator.generate_json_report(analysis)
-            filename = f"pvg_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            filename = f"pvg_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
         
         elif request.format == "csv":
             content = report_generator.generate_csv_report(analysis)
-            filename = f"pvg_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+            filename = f"pvg_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
         
         elif request.format == "summary":
             content = report_generator.generate_summary_report(analysis)
-            filename = f"pvg_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
+            filename = f"pvg_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
         
         else:
             raise ValueError(f"Unknown format: {request.format}")
@@ -212,9 +212,11 @@ async def generate_report(request: ReportRequest):
             "format": request.format,
             "content": content,
             "filename": filename,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z"
         }
     
     except Exception as e:
         logger.error(f"Report generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+

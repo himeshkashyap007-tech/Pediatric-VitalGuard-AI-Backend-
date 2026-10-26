@@ -1,6 +1,6 @@
 """Report generation service."""
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 import logging
 
@@ -14,7 +14,7 @@ class ReportGenerator:
         
         report = {
             "report_type": "json",
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "system": {
                 "name": "Pediatric VitalGuard AI",
                 "version": "1.0.0",
@@ -35,7 +35,8 @@ class ReportGenerator:
         
         lines = []
         lines.append("Pediatric VitalGuard AI - Analysis Report")
-        lines.append(f"Generated: {datetime.utcnow().isoformat()}Z")
+        lines.append(f"Generated: {datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}"
+   )
         lines.append("")
         
         lines.append("Quality Score Summary")
@@ -65,7 +66,9 @@ class ReportGenerator:
         lines.append("=" * 60)
         lines.append("PEDIATRIC VITALGUARD AI - ANALYSIS SUMMARY")
         lines.append("=" * 60)
-        lines.append(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        lines.append(
+          f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"
+)
         lines.append(f"Data Source: {analysis.get('data_source', 'unknown')}")
         lines.append(f"Sample Count: {analysis.get('sample_count', 0)}")
         lines.append("")
