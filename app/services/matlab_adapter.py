@@ -1,0 +1,217 @@
+"""MATLAB/Simulink adapter."""
+import subprocess
+import json
+import logging
+from pathlib import Path
+from typing import Dict, Any, Optional
+import tempfile
+import shutil
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+class MATLABAdapter:
+    """Adapter for MATLAB/Simulink integration."""
+    
+    def __init__(self):
+        self.matlab_available = settings.MATLAB_AVAILABLE
+        self.matlab_path = settings.MATLAB_PATH
+        self.timeout = settings.MATLAB_TIMEOUT
+    
+    def check_availability(self) -> Dict[str, Any]:
+        """Check if MATLAB is available."""
+        
+        if not self.matlab_available:
+            return {
+                "available": False,
+                "reason": "MATLAB path not configured",
+                "matlab_path": None
+            }
+        
+        try:
+            # Try to run MATLAB with version command
+            result = subprocess.run(
+                [self.matlab_path, "-batch", "version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                return {
+                    "available": True,
+                    "version": result.stdout.strip(),
+                    "matlab_path": self.matlab_path
+                }
+            else:
+                return {
+                    "available": False,
+                    "reason": f"MATLAB execution failed: {result.stderr}",
+                    "matlab_path": self.matlab_path
+                }
+        
+        except FileNotFoundError:
+            return {
+                "available": False,
+                "reason": "MATLAB executable not found",
+                "matlab_path": self.matlab_path
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "available": False,
+                "reason": "MATLAB check timed out",
+                "matlab_path": self.matlab_path
+            }
+        except Exception as e:
+            return {
+                "available": False,
+                "reason": f"Error checking MATLAB: {str(e)}",
+                "matlab_path": self.matlab_path
+            }
+    
+    def run_simulation(
+        self,
+        scenario: str,
+        duration: float,
+        sample_rate: float,
+        seed: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Run MATLAB simulation."""
+        
+        if not self.matlab_available:
+            raise RuntimeError("MATLAB is not available")
+        
+        # Create temporary directory
+        temp_dir = Path(tempfile.mkdtemp(prefix="pvg_matlab_"))
+        
+        try:
+            # Prepare MATLAB script
+            script_content = self._generate_matlab_script(
+                scenario, duration, sample_rate, seed, temp_dir
+            )
+            
+            script_path = temp_dir / "run_simulation.m"
+            script_path.write_text(script_content)
+            
+            # Run MATLAB
+            logger.info(f"Running MATLAB simulation: {scenario}")
+            
+            result = subprocess.run(
+                [
+                    self.matlab_path,
+                    "-batch",
+                    f"cd('{temp_dir}'); run_simulation"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout
+            )
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"MATLAB execution failed: {result.stderr}")
+            
+            # Load results
+            csv_path = temp_dir / "simulation_data.csv"
+            metadata_path = temp_dir / "simulation_metadata.json"
+            
+            if not csv_path.exists():
+                raise RuntimeError("MATLAB did not generate CSV output")
+            
+            # Parse CSV (simplified - use csv_parser in production)
+            import csv
+            with open(csv_path, 'r') as f:
+                reader = csv.DictReader(f)
+                data = [
+                    {k: float(v) if v else None for k, v in row.items()}
+                    for row in reader
+                ]
+            
+            # Load metadata
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                metadata = {
+                    "scenario": scenario,
+                    "generation_method": "matlab",
+                    "synthetic_data": True
+                }
+            
+            logger.info(f"MATLAB simulation completed: {len(data)} samples")
+            
+            return {
+                "success": True,
+                "data": data,
+                "metadata": metadata,
+                "source": "matlab"
+            }
+        
+        except subprocess.TimeoutExpired:
+            logger.error("MATLAB simulation timed out")
+            raise RuntimeError(f"MATLAB simulation timed out after {self.timeout}s")
+        
+        except Exception as e:
+            logger.error(f"MATLAB simulation error: {str(e)}")
+            raise
+        
+        finally:
+            # Cleanup
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+    
+    def _generate_matlab_script(
+        self,
+        scenario: str,
+        duration: float,
+        sample_rate: float,
+        seed: Optional[int],
+        output_dir: Path
+    ) -> str:
+        """Generate MATLAB script for simulation."""
+        
+        script = f"""
+% Auto-generated simulation script
+scenario = '{scenario}';
+duration = {duration};
+sample_rate = {sample_rate};
+seed = {seed if seed is not None else 'randi(10000)'};
+
+% Set random seed
+rng(seed);
+
+% Run simulation (placeholder - requires actual model)
+fprintf('Running scenario: %s\\n', scenario);
+
+% Generate synthetic data (simplified)
+n_samples = floor(duration * sample_rate);
+t = (0:n_samples-1) / sample_rate;
+
+% Placeholder signal generation
+pulse = 120 + 10*randn(n_samples, 1);
+spo2 = 98 + randn(n_samples, 1);
+
+% Export to CSV
+data_table = table(t', pulse, spo2, ...
+    'VariableNames', {{'timestamp', 'pulse_bpm', 'spo2_percent'}});
+writetable(data_table, '{output_dir}/simulation_data.csv');
+
+% Export metadata
+metadata = struct();
+metadata.scenario = scenario;
+metadata.duration = duration;
+metadata.sample_rate = sample_rate;
+metadata.seed = seed;
+metadata.generation_method = 'matlab_script';
+metadata.synthetic_data = true;
+
+fid = fopen('{output_dir}/simulation_metadata.json', 'w');
+fprintf(fid, '%s', jsonencode(metadata));
+fclose(fid);
+
+fprintf('Simulation complete\\n');
+"""
+        
+        return script
