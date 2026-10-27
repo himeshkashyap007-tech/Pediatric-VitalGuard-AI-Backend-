@@ -8,27 +8,40 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Central application settings loaded from environment variables."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
+        extra="ignore",
     )
 
+    # Application
     APP_NAME: str = "Pediatric VitalGuard AI"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
+    # API
     API_V1_PREFIX: str = "/api/v1"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024
     MAX_CSV_ROWS: int = 100000
 
+    # Groq AI
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
+    GROQ_TIMEOUT_SECONDS: float = 20.0
+
+    # MATLAB / Simulink
     MATLAB_AVAILABLE: bool = False
     MATLAB_PATH: str = ""
     MATLAB_TIMEOUT: int = 60
 
+    # Simulation defaults
     DEFAULT_DURATION: float = 60.0
     DEFAULT_SAMPLE_RATE: float = 100.0
     MIN_SAMPLES: int = 100
 
+    # Signal quality weights
     QUALITY_WEIGHTS: dict = {
         "snr": 0.25,
         "stability": 0.20,
@@ -38,6 +51,7 @@ class Settings(BaseSettings):
         "sampling": 0.10,
     }
 
+    # Application directories
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     TEMP_DIR: Path = BASE_DIR / "temp"
     EXPORT_DIR: Path = BASE_DIR / "export"

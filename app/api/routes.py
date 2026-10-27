@@ -1,4 +1,6 @@
 ﻿"""API route handlers."""
+from app.models.requests import AIAnalysisRequest, AIComparisonRequest
+from app.services.ai_analysis import AIAnalysisService, AIAnalysisError
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime, timezone
@@ -32,6 +34,7 @@ artifact_detector = ArtifactDetector()
 quality_scorer = QualityScorer()
 validator = PhysiologicalValidator()
 report_generator = ReportGenerator()
+ai_analysis_service = AIAnalysisService()
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -219,4 +222,40 @@ async def generate_report(request: ReportRequest):
         logger.error(f"Report generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+@router.post("/ai/report")
+async def generate_ai_report(request: AIAnalysisRequest):
+    """Generate an AI explanation for a simulation or analysis summary."""
+    try:
+        result = ai_analysis_service.analyze("report", request.payload)
+        return {"success": True, "data": result}
+    except AIAnalysisError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@router.post("/ai/patterns")
+async def explain_ai_patterns(request: AIAnalysisRequest):
+    """Explain patterns in an existing deterministic analysis result."""
+    try:
+        result = ai_analysis_service.analyze("patterns", request.payload)
+        return {"success": True, "data": result}
+    except AIAnalysisError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@router.post("/ai/compare")
+async def compare_ai_scenarios(request: AIComparisonRequest):
+    """Compare two simulation or analysis summaries."""
+    try:
+        result = ai_analysis_service.analyze(
+            "compare",
+            {
+                "baseline": request.baseline,
+                "comparison": request.comparison,
+            },
+        )
+        return {"success": True, "data": result}
+    except AIAnalysisError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 

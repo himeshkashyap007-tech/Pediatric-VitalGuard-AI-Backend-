@@ -75,3 +75,17 @@ class ReportRequest(BaseModel):
         False,
         description="Include raw signal data",
     )
+
+
+class AIAnalysisRequest(BaseModel):
+    """Request for AI-generated explanations."""
+    payload: dict = Field(
+        ...,
+        description="Simulation summary or deterministic analysis result",
+    )
+
+
+class AIComparisonRequest(BaseModel):
+    """Request to compare two simulation or analysis summaries."""
+    baseline: dict = Field(..., description="First scenario summary")
+    comparison: dict = Field(..., description="Second scenario summary")
