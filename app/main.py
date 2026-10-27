@@ -1,4 +1,4 @@
-```python
+
 """
 Pediatric VitalGuard AI - Main FastAPI Application
 MED-PS-010
