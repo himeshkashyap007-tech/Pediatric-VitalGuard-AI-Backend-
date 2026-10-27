@@ -1,10 +1,11 @@
-
+```python
 """
 Pediatric VitalGuard AI - Main FastAPI Application
 MED-PS-010
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -19,6 +20,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,15 +45,37 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Explicitly allow the deployed frontend and local development origins.
+# Additional origins can be configured using FRONTEND_ORIGINS.
+default_origins = [
+    "https://vitalguardai.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+
+configured_origins = os.getenv("FRONTEND_ORIGINS", "")
+
+allowed_origins = list(
+    dict.fromkeys(
+        default_origins
+        + [
+            origin.strip().rstrip("/")
+            for origin in configured_origins.split(",")
+            if origin.strip()
+        ]
+    )
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
     max_age=3600,
 )
 
+# Register API routes.
 app.include_router(router, prefix="/api/v1")
 
 
@@ -66,4 +90,10 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8000")),
+        reload=False,
+    )
+```
